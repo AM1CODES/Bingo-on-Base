@@ -1,46 +1,21 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useTokens } from "@/context/TokenContext";
-
-// Type definitions
-type BingoColumn = number[];
-interface BingoCard {
-  B: BingoColumn;
-  I: BingoColumn;
-  N: BingoColumn;
-  G: BingoColumn;
-  O: BingoColumn;
+import { GameMode, BingoCard, GameState } from "@/types/game"; // Removed unused GameRoom import
+interface Props {
+  gameType: GameMode;
+  onEnd: () => void;
 }
 
-interface MarkedNumbers {
-  player: number[];
-  computer: number[];
-}
-
-interface GameState {
-  playerCard: BingoCard | null;
-  computerCard: BingoCard | null;
-  calledNumbers: number[];
-  currentNumber: number | null;
-  isGameActive: boolean;
-  isPaused: boolean;
-  winner: "player" | "computer" | null;
-  playerHasBingo: boolean;
-  markedNumbers: MarkedNumbers;
-}
-
-// Constants
 const BINGO_LETTERS = ["B", "I", "N", "G", "O"] as const;
-const NUMBER_CALL_INTERVAL = 2500; // 2.5 seconds between number calls
+const NUMBER_CALL_INTERVAL = 2500;
 
-const BingoGame = () => {
-  // Get token functions from context
-  const { tokens, spendToken } = useTokens();
+const BingoGame: React.FC<Props> = ({ gameType, onEnd }) => {
+  const { spendToken } = useTokens();
 
-  // Initialize game state
   const [gameState, setGameState] = useState<GameState>({
     playerCard: null,
-    computerCard: null,
+    opponentCard: null,
     calledNumbers: [],
     currentNumber: null,
     isGameActive: false,
@@ -49,12 +24,9 @@ const BingoGame = () => {
     playerHasBingo: false,
     markedNumbers: {
       player: [],
-      computer: [],
+      opponent: [],
     },
   });
-
-  // Error state for token-related issues
-  const [tokenError, setTokenError] = useState<string | null>(null);
 
   // Helper functions
   const generateColumnNumbers = (
@@ -72,60 +44,62 @@ const BingoGame = () => {
     return numbers;
   };
 
-  const generateBingoCard = (): BingoCard => ({
-    B: generateColumnNumbers(1, 15, 5),
-    I: generateColumnNumbers(16, 30, 5),
-    N: generateColumnNumbers(31, 45, 5),
-    G: generateColumnNumbers(46, 60, 5),
-    O: generateColumnNumbers(61, 75, 5),
-  });
+  const generateBingoCard = useCallback(
+    (): BingoCard => ({
+      B: generateColumnNumbers(1, 15, 5),
+      I: generateColumnNumbers(16, 30, 5),
+      N: generateColumnNumbers(31, 45, 5),
+      G: generateColumnNumbers(46, 60, 5),
+      O: generateColumnNumbers(61, 75, 5),
+    }),
+    [],
+  );
 
-  // Game logic functions
-  const checkWin = useCallback((numbers: number[], card: BingoCard) => {
-    const areAllMarked = (nums: number[]) =>
-      nums.every((num) => numbers.includes(num));
+  const checkWin = useCallback(
+    (numbers: number[], card: BingoCard): boolean => {
+      const areAllMarked = (nums: number[]): boolean =>
+        nums.every((num) => numbers.includes(num));
 
-    // Check rows
-    for (const letter of BINGO_LETTERS) {
-      if (areAllMarked(card[letter as keyof BingoCard])) {
-        return true;
+      // Check rows
+      for (const letter of BINGO_LETTERS) {
+        if (areAllMarked(card[letter as keyof BingoCard])) {
+          return true;
+        }
       }
-    }
 
-    // Check columns
-    for (let i = 0; i < 5; i++) {
-      const column = BINGO_LETTERS.map(
-        (letter) => card[letter as keyof BingoCard][i],
+      // Check columns
+      for (let i = 0; i < 5; i++) {
+        const column = BINGO_LETTERS.map(
+          (letter) => card[letter as keyof BingoCard][i],
+        );
+        if (areAllMarked(column)) {
+          return true;
+        }
+      }
+
+      // Check diagonals
+      const diagonal1 = BINGO_LETTERS.map(
+        (letter, i) => card[letter as keyof BingoCard][i],
       );
-      if (areAllMarked(column)) {
-        return true;
-      }
-    }
+      const diagonal2 = BINGO_LETTERS.map(
+        (letter, i) => card[letter as keyof BingoCard][4 - i],
+      );
 
-    // Check diagonals
-    const diagonal1 = BINGO_LETTERS.map(
-      (letter, i) => card[letter as keyof BingoCard][i],
-    );
-    const diagonal2 = BINGO_LETTERS.map(
-      (letter, i) => card[letter as keyof BingoCard][4 - i],
-    );
+      return areAllMarked(diagonal1) || areAllMarked(diagonal2);
+    },
+    [],
+  );
 
-    return areAllMarked(diagonal1) || areAllMarked(diagonal2);
-  }, []);
-
-  // Handle game start with token check
-  const startGame = useCallback(() => {
-    setTokenError(null);
-
-    // Try to spend a token
+  const handleGameStart = useCallback(() => {
     if (!spendToken()) {
-      setTokenError("Not enough tokens to play. Please purchase more tokens.");
+      onEnd();
       return;
     }
 
-    setGameState({
+    setGameState((prevState: GameState) => ({
+      ...prevState,
       playerCard: generateBingoCard(),
-      computerCard: generateBingoCard(),
+      opponentCard: gameType === "single" ? generateBingoCard() : null,
       calledNumbers: [],
       currentNumber: null,
       isGameActive: true,
@@ -134,22 +108,25 @@ const BingoGame = () => {
       playerHasBingo: false,
       markedNumbers: {
         player: [],
-        computer: [],
+        opponent: [],
       },
-    });
-  }, [spendToken]);
+    }));
+  }, [spendToken, generateBingoCard, gameType]);
 
   const handleBingoClaim = () => {
     if (!gameState.playerCard) return;
 
     if (checkWin(gameState.markedNumbers.player, gameState.playerCard)) {
-      setGameState((prev) => ({
-        ...prev,
+      setGameState((prevState: GameState) => ({
+        ...prevState,
         winner: "player",
         isGameActive: false,
       }));
     } else {
-      setGameState((prev) => ({ ...prev, playerHasBingo: false }));
+      setGameState((prevState: GameState) => ({
+        ...prevState,
+        playerHasBingo: false,
+      }));
     }
   };
 
@@ -158,45 +135,22 @@ const BingoGame = () => {
       return;
 
     if (!gameState.markedNumbers.player.includes(number)) {
-      setGameState((prev) => ({
-        ...prev,
+      setGameState((prevState: GameState) => ({
+        ...prevState,
         markedNumbers: {
-          ...prev.markedNumbers,
-          player: [...prev.markedNumbers.player, number],
+          ...prevState.markedNumbers,
+          player: [...prevState.markedNumbers.player, number],
         },
       }));
     }
   };
 
   const togglePause = () => {
-    setGameState((prev) => ({ ...prev, isPaused: !prev.isPaused }));
+    setGameState((prevState: GameState) => ({
+      ...prevState,
+      isPaused: !prevState.isPaused,
+    }));
   };
-
-  // Auto mark computer numbers
-  const autoMarkComputerNumber = useCallback(
-    (number: number) => {
-      if (!gameState.computerCard) return;
-
-      setGameState((prev) => {
-        if (!prev.computerCard) return prev;
-
-        for (const letter of BINGO_LETTERS) {
-          const column = prev.computerCard[letter as keyof BingoCard];
-          if (column.includes(number)) {
-            return {
-              ...prev,
-              markedNumbers: {
-                ...prev.markedNumbers,
-                computer: [...prev.markedNumbers.computer, number],
-              },
-            };
-          }
-        }
-        return prev;
-      });
-    },
-    [gameState.computerCard],
-  );
 
   // Effect for number calling
   useEffect(() => {
@@ -204,62 +158,84 @@ const BingoGame = () => {
 
     if (gameState.isGameActive && !gameState.winner && !gameState.isPaused) {
       intervalId = setInterval(() => {
-        const availableNumbers = Array.from(
-          { length: 75 },
-          (_, i) => i + 1,
-        ).filter((num) => !gameState.calledNumbers.includes(num));
+        setGameState((prevState: GameState) => {
+          const availableNumbers = Array.from(
+            { length: 75 },
+            (_, i) => i + 1,
+          ).filter((num) => !prevState.calledNumbers.includes(num));
 
-        if (availableNumbers.length === 0) {
-          setGameState((prev) => ({ ...prev, isGameActive: false }));
-          return;
-        }
+          if (availableNumbers.length === 0) {
+            return { ...prevState, isGameActive: false };
+          }
 
-        const newNumber =
-          availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
-        setGameState((prev) => ({
-          ...prev,
-          currentNumber: newNumber,
-          calledNumbers: [...prev.calledNumbers, newNumber],
-        }));
-        autoMarkComputerNumber(newNumber);
+          const newNumber =
+            availableNumbers[
+              Math.floor(Math.random() * availableNumbers.length)
+            ];
+
+          // Auto-mark computer's numbers in single player mode
+          let newOpponentMarkedNumbers = prevState.markedNumbers.opponent;
+          if (gameType === "single" && prevState.opponentCard) {
+            for (const letter of BINGO_LETTERS) {
+              if (
+                prevState.opponentCard[letter as keyof BingoCard].includes(
+                  newNumber,
+                )
+              ) {
+                newOpponentMarkedNumbers = [
+                  ...newOpponentMarkedNumbers,
+                  newNumber,
+                ];
+                break;
+              }
+            }
+          }
+
+          return {
+            ...prevState,
+            currentNumber: newNumber,
+            calledNumbers: [...prevState.calledNumbers, newNumber],
+            markedNumbers: {
+              ...prevState.markedNumbers,
+              opponent: newOpponentMarkedNumbers,
+            },
+          };
+        });
       }, NUMBER_CALL_INTERVAL);
     }
 
     return () => clearInterval(intervalId);
-  }, [
-    gameState.isGameActive,
-    gameState.winner,
-    gameState.isPaused,
-    gameState.calledNumbers,
-    autoMarkComputerNumber,
-  ]);
+  }, [gameState.isGameActive, gameState.winner, gameState.isPaused, gameType]);
 
   // Effect for checking wins
   useEffect(() => {
-    if (
-      !gameState.isGameActive ||
-      !gameState.playerCard ||
-      !gameState.computerCard
-    )
-      return;
+    if (!gameState.isGameActive || !gameState.playerCard) return;
 
     if (checkWin(gameState.markedNumbers.player, gameState.playerCard)) {
-      setGameState((prev) => ({ ...prev, playerHasBingo: true }));
+      setGameState((prevState: GameState) => ({
+        ...prevState,
+        playerHasBingo: true,
+      }));
     }
 
-    if (checkWin(gameState.markedNumbers.computer, gameState.computerCard)) {
-      setGameState((prev) => ({
-        ...prev,
-        winner: "computer",
+    if (
+      gameType === "single" &&
+      gameState.opponentCard &&
+      checkWin(gameState.markedNumbers.opponent, gameState.opponentCard)
+    ) {
+      setGameState((prevState: GameState) => ({
+        ...prevState,
+        winner: "opponent",
         isGameActive: false,
       }));
     }
   }, [
     gameState.markedNumbers,
     gameState.playerCard,
-    gameState.computerCard,
+    gameState.opponentCard,
     gameState.isGameActive,
     checkWin,
+    gameType,
   ]);
 
   // Render functions
@@ -268,12 +244,16 @@ const BingoGame = () => {
 
     const markedNumbersArray = isPlayer
       ? gameState.markedNumbers.player
-      : gameState.markedNumbers.computer;
+      : gameState.markedNumbers.opponent;
 
     return (
       <div className="bg-white p-4 rounded-lg shadow-lg">
         <h3 className="text-center font-bold mb-2">
-          {isPlayer ? "Your Card" : "Computer's Card"}
+          {isPlayer
+            ? "Your Card"
+            : gameType === "single"
+              ? "Computer's Card"
+              : "Opponent's Card"}
         </h3>
         <div className="grid grid-cols-5 gap-1">
           {BINGO_LETTERS.map((letter) => (
@@ -307,23 +287,13 @@ const BingoGame = () => {
     );
   };
 
-  // Main render
   return (
     <div className="max-w-6xl mx-auto p-4">
       {!gameState.isGameActive && !gameState.winner ? (
         <div className="text-center">
-          <div className="mb-4">
-            <p className="text-lg">Available Tokens: {tokens}</p>
-            {tokenError && <p className="text-red-500 mt-2">{tokenError}</p>}
-          </div>
           <button
-            onClick={startGame}
-            className={`px-6 py-2 rounded ${
-              tokens > 0
-                ? "bg-blue-500 hover:bg-blue-600"
-                : "bg-gray-400 cursor-not-allowed"
-            } text-white`}
-            disabled={tokens === 0}
+            onClick={handleGameStart}
+            className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 mx-auto block"
           >
             Start New Game (1 Token)
           </button>
@@ -332,7 +302,8 @@ const BingoGame = () => {
         <>
           <div className="grid md:grid-cols-2 gap-8 mb-8">
             {renderBingoCard(gameState.playerCard, true)}
-            {renderBingoCard(gameState.computerCard, false)}
+            {gameType === "single" &&
+              renderBingoCard(gameState.opponentCard, false)}
           </div>
 
           <div className="text-center mb-8">
@@ -370,13 +341,8 @@ const BingoGame = () => {
 
               {gameState.winner && (
                 <button
-                  onClick={startGame}
-                  className={`px-6 py-2 rounded ${
-                    tokens > 0
-                      ? "bg-blue-500 hover:bg-blue-600"
-                      : "bg-gray-400 cursor-not-allowed"
-                  } text-white`}
-                  disabled={tokens === 0}
+                  onClick={handleGameStart}
+                  className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
                 >
                   Play Again (1 Token)
                 </button>
