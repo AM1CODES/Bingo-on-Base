@@ -7,6 +7,7 @@ interface GameRoomContextType {
   currentRoom: GameRoom | null;
   isLoading: boolean;
   error: string | null;
+  playerId: string; // Add this
   createRoom: (playerName: string) => Promise<string>;
   joinRoom: (roomId: string, playerName: string) => Promise<boolean>;
   leaveRoom: () => void;
@@ -22,6 +23,7 @@ export function GameRoomProvider({ children }: { children: ReactNode }) {
   const [currentRoom, setCurrentRoom] = useState<GameRoom | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Generate a unique player ID that persists during the session
   const [playerId] = useState(
     () => `player_${Math.random().toString(36).substr(2, 9)}`,
   );
@@ -63,7 +65,10 @@ export function GameRoomProvider({ children }: { children: ReactNode }) {
   };
 
   const leaveRoom = () => {
-    setCurrentRoom(null);
+    if (currentRoom) {
+      gameRoomService.leaveRoom(currentRoom.id, playerId);
+      setCurrentRoom(null);
+    }
   };
 
   const markNumber = async (number: number) => {
@@ -92,6 +97,7 @@ export function GameRoomProvider({ children }: { children: ReactNode }) {
         currentRoom,
         isLoading,
         error,
+        playerId, // Add this
         createRoom,
         joinRoom,
         leaveRoom,
@@ -110,20 +116,4 @@ export function useGameRoom() {
     throw new Error("useGameRoom must be used within a GameRoomProvider");
   }
   return context;
-}
-
-export function useIsRoomCreator() {
-  const { currentRoom } = useGameRoom();
-  return (
-    currentRoom?.creator.id ===
-    useState(() => `player_${Math.random().toString(36).substr(2, 9)}`)[0]
-  );
-}
-
-export function useIsPlayerTurn() {
-  const { currentRoom } = useGameRoom();
-  return (
-    currentRoom?.currentTurn ===
-    useState(() => `player_${Math.random().toString(36).substr(2, 9)}`)[0]
-  );
 }

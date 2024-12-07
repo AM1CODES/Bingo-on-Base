@@ -1,23 +1,22 @@
+export interface Player {
+  id: string;
+  name: string;
+  card: BingoCard | null;
+  markedNumbers: number[];
+  isReady: boolean;
+}
+
 export interface GameRoom {
   id: string;
-  creator: {
-    id: string;
-    name: string;
-    card: BingoCard | null;
-    markedNumbers: number[];
-  };
-  opponent: {
-    id: string;
-    name: string;
-    card: BingoCard | null;
-    markedNumbers: number[];
-  } | null;
+  creator: Player;
+  opponent: Player | null;
   isActive: boolean;
-  currentTurn: string;
+  currentTurn: string; // player ID of whose turn it is
   calledNumbers: number[];
   currentNumber: number | null;
-  winner: string | null;
+  winner: string | null; // player ID of winner
   status: "waiting" | "playing" | "finished";
+  lastUpdated: number;
 }
 
 export interface BingoCard {
@@ -30,7 +29,6 @@ export interface BingoCard {
 
 export type GameMode = "single" | "multiplayer";
 
-// Add GameState interface
 export interface GameState {
   playerCard: BingoCard | null;
   opponentCard: BingoCard | null;

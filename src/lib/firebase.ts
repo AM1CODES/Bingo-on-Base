@@ -1,21 +1,45 @@
 import { initializeApp } from "firebase/app";
-import { getDatabase } from "firebase/database";
+import {
+  getDatabase,
+  ref as databaseRef,
+  onValue,
+  DatabaseReference,
+} from "firebase/database";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
 };
 
-// Log config for debugging (remove in production)
-console.log("Firebase Config:", {
+// Add debug logs
+console.log("Initializing Firebase with config:", {
   ...firebaseConfig,
-  apiKey: "HIDDEN", // Don't log the actual API key
+  apiKey: "[HIDDEN]", // Don't log the actual API key
 });
 
 const app = initializeApp(firebaseConfig);
-export const database = getDatabase(app);
+const database = getDatabase(app);
+
+// Test database connection
+const testConnection = async () => {
+  try {
+    const connectionRef: DatabaseReference = databaseRef(
+      database,
+      ".info/connected",
+    );
+    onValue(connectionRef, (snapshot) => {
+      console.log("Database connection status:", snapshot.val());
+    });
+  } catch (error) {
+    console.error("Database connection error:", error);
+  }
+};
+
+testConnection();
+
+export { database };

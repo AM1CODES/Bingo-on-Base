@@ -1,9 +1,9 @@
 import { database } from "@/lib/firebase";
-import { ref, set, get, update, onValue, off } from "firebase/database";
-import { GameRoom } from "@/types/game";
+import { ref, set, get, update, onValue, off, remove } from "firebase/database"; // Add remove here
+import { GameRoom, Player, BingoCard } from "@/types/game";
 
 // Helper function to generate a bingo card
-function generateBingoCard() {
+function generateBingoCard(): BingoCard {
   const generateColumnNumbers = (
     min: number,
     max: number,
@@ -30,28 +30,42 @@ function generateBingoCard() {
 
 export const gameRoomService = {
   createRoom: async (creatorId: string, creatorName: string) => {
-    const roomId = Math.random().toString(36).substr(2, 9).toUpperCase();
-    const roomRef = ref(database, `rooms/${roomId}`);
+    try {
+      const roomId = Math.random().toString(36).substr(2, 9).toUpperCase();
+      const roomRef = ref(database, `rooms/${roomId}`);
 
-    const roomData: GameRoom = {
-      id: roomId,
-      creator: {
+      console.log("Creating room with ID:", roomId); // Debug log
+
+      const creator: Player = {
         id: creatorId,
         name: creatorName,
         card: generateBingoCard(),
         markedNumbers: [],
-      },
-      opponent: null,
-      isActive: true,
-      currentTurn: creatorId,
-      calledNumbers: [],
-      currentNumber: null,
-      winner: null,
-      status: "waiting",
-    };
+        isReady: true,
+      };
 
-    await set(roomRef, roomData);
-    return roomId;
+      const roomData: GameRoom = {
+        id: roomId,
+        creator,
+        opponent: null,
+        isActive: true,
+        currentTurn: creatorId,
+        calledNumbers: [],
+        currentNumber: null,
+        winner: null,
+        status: "waiting",
+        lastUpdated: Date.now(),
+      };
+
+      console.log("Room data:", roomData); // Debug log
+
+      await set(roomRef, roomData);
+      console.log("Room created successfully"); // Debug log
+      return roomId;
+    } catch (error) {
+      console.error("Error creating room:", error); // Detailed error log
+      throw error;
+    }
   },
 
   joinRoom: async (roomId: string, playerId: string, playerName: string) => {
@@ -67,17 +81,45 @@ export const gameRoomService = {
       throw new Error("Room is full or inactive");
     }
 
+    const opponent: Player = {
+      id: playerId,
+      name: playerName,
+      card: generateBingoCard(),
+      markedNumbers: [],
+      isReady: true, // Add isReady property
+    };
+
     await update(roomRef, {
-      opponent: {
-        id: playerId,
-        name: playerName,
-        card: generateBingoCard(),
-        markedNumbers: [],
-      },
+      opponent,
       status: "playing",
+      lastUpdated: Date.now(),
     });
 
     return true;
+  },
+
+  leaveRoom: async (roomId: string, playerId: string) => {
+    const roomRef = ref(database, `rooms/${roomId}`);
+    const snapshot = await get(roomRef);
+
+    if (!snapshot.exists()) return;
+
+    const room = snapshot.val() as GameRoom;
+
+    // If the leaving player is the creator, delete the room
+    if (room.creator.id === playerId) {
+      await remove(roomRef);
+      return;
+    }
+
+    // If the leaving player is the opponent, remove them
+    if (room.opponent?.id === playerId) {
+      await update(roomRef, {
+        opponent: null,
+        status: "waiting",
+        lastUpdated: Date.now(),
+      });
+    }
   },
 
   subscribeToRoom: (roomId: string, callback: (room: GameRoom) => void) => {
@@ -105,6 +147,7 @@ export const gameRoomService = {
     if (!currentMarkedNumbers.includes(number)) {
       await update(roomRef, {
         [path]: [...currentMarkedNumbers, number],
+        lastUpdated: Date.now(),
       });
     }
   },
@@ -114,6 +157,26 @@ export const gameRoomService = {
     await update(roomRef, {
       winner: playerId,
       status: "finished",
+      lastUpdated: Date.now(),
+    });
+  },
+
+  // Add method to update player ready status
+  setPlayerReady: async (
+    roomId: string,
+    playerId: string,
+    isReady: boolean,
+  ) => {
+    const roomRef = ref(database, `rooms/${roomId}`);
+    const snapshot = await get(roomRef);
+    const room = snapshot.val() as GameRoom;
+
+    const isCreator = room.creator.id === playerId;
+    const path = isCreator ? "creator.isReady" : "opponent.isReady";
+
+    await update(roomRef, {
+      [path]: isReady,
+      lastUpdated: Date.now(),
     });
   },
 };
