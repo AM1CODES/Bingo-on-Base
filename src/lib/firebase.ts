@@ -1,10 +1,5 @@
 import { initializeApp } from "firebase/app";
-import {
-  getDatabase,
-  ref as databaseRef,
-  onValue,
-  DatabaseReference,
-} from "firebase/database";
+import { getDatabase, ref, onValue } from "firebase/database";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -16,28 +11,21 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Add debug logs
 console.log("Initializing Firebase with config:", {
   ...firebaseConfig,
-  apiKey: "[HIDDEN]", // Don't log the actual API key
+  apiKey: "[HIDDEN]",
+  databaseURL: firebaseConfig.databaseURL, // Show this explicitly
 });
 
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 
 // Test database connection
-const testConnection = async () => {
-  try {
-    const connectionRef: DatabaseReference = databaseRef(
-      database,
-      ".info/connected",
-    );
-    onValue(connectionRef, (snapshot) => {
-      console.log("Database connection status:", snapshot.val());
-    });
-  } catch (error) {
-    console.error("Database connection error:", error);
-  }
+const testConnection = () => {
+  const testRef = ref(database, ".info/connected");
+  onValue(testRef, (snapshot) => {
+    console.log("Database connection status:", snapshot.val());
+  });
 };
 
 testConnection();

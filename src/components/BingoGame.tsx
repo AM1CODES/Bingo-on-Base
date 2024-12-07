@@ -1,7 +1,10 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTokens } from "@/context/TokenContext";
-import { GameMode, BingoCard, GameState } from "@/types/game"; // Removed unused GameRoom import
+import { useGameRoom } from "@/context/GameRoomContext";
+import { GameMode, BingoCard, GameState } from "@/types/game";
+import MultiplayerGame from "./MultiplayerGame";
+
 interface Props {
   gameType: GameMode;
   onEnd: () => void;
@@ -11,7 +14,9 @@ const BINGO_LETTERS = ["B", "I", "N", "G", "O"] as const;
 const NUMBER_CALL_INTERVAL = 2500;
 
 const BingoGame: React.FC<Props> = ({ gameType, onEnd }) => {
+  // All hooks must be at the top level
   const { spendToken } = useTokens();
+  const { currentRoom, playerId } = useGameRoom();
 
   const [gameState, setGameState] = useState<GameState>({
     playerCard: null,
@@ -28,7 +33,7 @@ const BingoGame: React.FC<Props> = ({ gameType, onEnd }) => {
     },
   });
 
-  // Helper functions
+  // Helper functions that don't use hooks can be defined anywhere
   const generateColumnNumbers = (
     min: number,
     max: number,
@@ -44,6 +49,7 @@ const BingoGame: React.FC<Props> = ({ gameType, onEnd }) => {
     return numbers;
   };
 
+  // All useCallback hooks must be at the top level
   const generateBingoCard = useCallback(
     (): BingoCard => ({
       B: generateColumnNumbers(1, 15, 5),
@@ -113,50 +119,16 @@ const BingoGame: React.FC<Props> = ({ gameType, onEnd }) => {
     }));
   }, [spendToken, generateBingoCard, gameType]);
 
-  const handleBingoClaim = () => {
-    if (!gameState.playerCard) return;
-
-    if (checkWin(gameState.markedNumbers.player, gameState.playerCard)) {
-      setGameState((prevState: GameState) => ({
-        ...prevState,
-        winner: "player",
-        isGameActive: false,
-      }));
-    } else {
-      setGameState((prevState: GameState) => ({
-        ...prevState,
-        playerHasBingo: false,
-      }));
-    }
-  };
-
-  const handlePlayerNumberClick = (number: number) => {
-    if (!gameState.isGameActive || !gameState.calledNumbers.includes(number))
-      return;
-
-    if (!gameState.markedNumbers.player.includes(number)) {
-      setGameState((prevState: GameState) => ({
-        ...prevState,
-        markedNumbers: {
-          ...prevState.markedNumbers,
-          player: [...prevState.markedNumbers.player, number],
-        },
-      }));
-    }
-  };
-
-  const togglePause = () => {
-    setGameState((prevState: GameState) => ({
-      ...prevState,
-      isPaused: !prevState.isPaused,
-    }));
-  };
-
-  // Effect for number calling
+  // All useEffect hooks must be at the top level
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
 
-    if (gameState.isGameActive && !gameState.winner && !gameState.isPaused) {
+    if (
+      gameState.isGameActive &&
+      !gameState.winner &&
+      !gameState.isPaused &&
+      gameType === "single"
+    ) {
       intervalId = setInterval(() => {
         setGameState((prevState: GameState) => {
           const availableNumbers = Array.from(
@@ -207,7 +179,6 @@ const BingoGame: React.FC<Props> = ({ gameType, onEnd }) => {
     return () => clearInterval(intervalId);
   }, [gameState.isGameActive, gameState.winner, gameState.isPaused, gameType]);
 
-  // Effect for checking wins
   useEffect(() => {
     if (!gameState.isGameActive || !gameState.playerCard) return;
 
@@ -238,7 +209,47 @@ const BingoGame: React.FC<Props> = ({ gameType, onEnd }) => {
     gameType,
   ]);
 
-  // Render functions
+  // Regular functions (event handlers) can be defined anywhere
+  const handleBingoClaim = () => {
+    if (!gameState.playerCard) return;
+
+    if (checkWin(gameState.markedNumbers.player, gameState.playerCard)) {
+      setGameState((prevState: GameState) => ({
+        ...prevState,
+        winner: "player",
+        isGameActive: false,
+      }));
+    } else {
+      setGameState((prevState: GameState) => ({
+        ...prevState,
+        playerHasBingo: false,
+      }));
+    }
+  };
+
+  const handlePlayerNumberClick = (number: number) => {
+    if (!gameState.isGameActive || !gameState.calledNumbers.includes(number))
+      return;
+
+    if (!gameState.markedNumbers.player.includes(number)) {
+      setGameState((prevState: GameState) => ({
+        ...prevState,
+        markedNumbers: {
+          ...prevState.markedNumbers,
+          player: [...prevState.markedNumbers.player, number],
+        },
+      }));
+    }
+  };
+
+  const togglePause = () => {
+    setGameState((prevState: GameState) => ({
+      ...prevState,
+      isPaused: !prevState.isPaused,
+    }));
+  };
+
+  // Render functions can be defined anywhere
   const renderBingoCard = (card: BingoCard | null, isPlayer: boolean) => {
     if (!card) return null;
 
@@ -287,6 +298,14 @@ const BingoGame: React.FC<Props> = ({ gameType, onEnd }) => {
     );
   };
 
+  // Early return for multiplayer mode
+  if (gameType === "multiplayer" && currentRoom) {
+    return (
+      <MultiplayerGame room={currentRoom} playerId={playerId} onLeave={onEnd} />
+    );
+  }
+
+  // Main render
   return (
     <div className="max-w-6xl mx-auto p-4">
       {!gameState.isGameActive && !gameState.winner ? (

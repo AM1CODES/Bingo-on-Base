@@ -1,4 +1,5 @@
 "use client";
+import { Suspense } from "react";
 import "./globals.css";
 import { TokenProvider } from "@/context/TokenContext";
 import { GameRoomProvider } from "@/context/GameRoomContext";
@@ -10,9 +11,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
+      <body suppressHydrationWarning={true}>
         <TokenProvider>
-          <GameRoomProvider>{children}</GameRoomProvider>
+          <GameRoomProvider>
+            <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+          </GameRoomProvider>
         </TokenProvider>
       </body>
     </html>

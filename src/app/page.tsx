@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react"; // Remove useEffect since it's not being used
+import { useState } from "react";
 import { useTokens } from "@/context/TokenContext";
 import { useGameRoom } from "@/context/GameRoomContext";
 import BingoGame from "@/components/BingoGame";
-import GameModeSelector from "@/components/GameModeSelector";
-import MultiplayerWaitingRoom from "@/components/MultiplayerWaitingRoom";
+import MultiplayerGame from "@/components/MultiplayerGame";
+import WaitingRoom from "@/components/WaitingRoom";
 import { GameMode } from "@/types/game";
 
 export default function Home() {
@@ -16,94 +16,127 @@ export default function Home() {
     leaveRoom,
     error: gameError,
     playerId,
+    createRoom,
   } = useGameRoom();
 
-  const handleModeSelect = (mode: GameMode) => {
-    if (tokens > 0) {
-      setGameMode(mode);
+  const handleCreateRoom = async () => {
+    try {
+      const playerName = `Player${Math.floor(Math.random() * 1000)}`;
+      await createRoom(playerName);
+      setGameMode("multiplayer");
+    } catch (error) {
+      console.error("Failed to create room:", error);
     }
   };
 
   const handleJoinRoom = async (roomId: string) => {
-    if (tokens > 0) {
-      try {
-        await joinRoom(roomId, `Player${Math.floor(Math.random() * 1000)}`);
-        setGameMode("multiplayer");
-      } catch (err) {
-        console.error("Failed to join room:", err);
-      }
+    try {
+      const playerName = `Player${Math.floor(Math.random() * 1000)}`;
+      await joinRoom(roomId, playerName);
+      setGameMode("multiplayer");
+    } catch (error) {
+      console.error("Failed to join room:", error);
     }
   };
 
-  const handleLeaveRoom = () => {
-    leaveRoom();
-    setGameMode(null);
-  };
-
-  // Render game content based on state
   const renderGameContent = () => {
-    if (tokens === 0) {
+    // If it's multiplayer and we have a room
+    if (gameMode === "multiplayer" && currentRoom) {
+      // Show waiting room if status is 'waiting'
+      if (currentRoom.status === "waiting") {
+        return (
+          <WaitingRoom
+            room={currentRoom}
+            playerId={playerId}
+            onLeave={() => {
+              leaveRoom();
+              setGameMode(null);
+            }}
+          />
+        );
+      }
+      // Show multiplayer game if status is 'playing'
       return (
-        <div className="text-center py-8">
-          <p className="text-xl text-red-600 mb-4">
-            You need tokens to play. Please purchase more tokens.
-          </p>
-          <button className="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">
-            Buy Tokens
-          </button>
-        </div>
-      );
-    }
-
-    if (!gameMode) {
-      return (
-        <GameModeSelector
-          onSelectMode={handleModeSelect}
-          onJoinRoom={handleJoinRoom}
+        <MultiplayerGame
+          room={currentRoom}
+          playerId={playerId}
+          onLeave={() => {
+            leaveRoom();
+            setGameMode(null);
+          }}
         />
       );
     }
 
-    if (gameMode === "multiplayer" && currentRoom) {
-      // Show waiting room if opponent hasn't joined yet
-      if (currentRoom.status === "waiting") {
-        return (
-          <MultiplayerWaitingRoom
-            room={currentRoom}
-            playerId={playerId}
-            onLeaveRoom={handleLeaveRoom}
-          />
-        );
-      }
+    // Show single player game
+    if (gameMode === "single") {
+      return <BingoGame gameType="single" onEnd={() => setGameMode(null)} />;
     }
 
+    // Show game mode selection
     return (
-      <BingoGame
-        gameType={gameMode}
-        onEnd={() => {
-          setGameMode(null);
-          if (currentRoom) {
-            leaveRoom();
-          }
-        }}
-      />
+      <div className="text-center space-y-6 py-8">
+        <h2 className="text-2xl font-bold mb-8">Select Game Mode</h2>
+
+        <button
+          onClick={() => setGameMode("single")}
+          className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 block w-64 mx-auto"
+        >
+          Play vs Computer
+        </button>
+
+        <button
+          onClick={handleCreateRoom}
+          className="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 block w-64 mx-auto"
+        >
+          Create 1v1 Room
+        </button>
+
+        <div className="mt-8">
+          <p className="text-gray-600 mb-2">Or join an existing room:</p>
+          <input
+            type="text"
+            placeholder="Enter Room Code"
+            className="px-4 py-2 border rounded mr-2"
+            onKeyPress={(e) => {
+              if (e.key === "Enter") {
+                const input = e.target as HTMLInputElement;
+                handleJoinRoom(input.value);
+              }
+            }}
+          />
+          <button
+            onClick={(e) => {
+              const input = e.currentTarget
+                .previousElementSibling as HTMLInputElement;
+              handleJoinRoom(input.value);
+            }}
+            className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+          >
+            Join Room
+          </button>
+        </div>
+      </div>
     );
   };
 
   return (
     <main className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-6xl mx-auto">
+        {/* Header */}
         <header className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Bingo Game</h1>
           <div className="text-lg font-semibold">Tokens: {tokens}</div>
         </header>
 
+        {/* Error Display */}
         {gameError && (
           <div className="bg-red-100 text-red-600 p-4 rounded-lg mb-4">
             {gameError}
           </div>
         )}
 
+        {/* Main Game Content */}
         {renderGameContent()}
       </div>
     </main>
