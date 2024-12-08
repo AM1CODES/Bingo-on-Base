@@ -2,13 +2,33 @@ import { database } from "@/lib/firebase";
 import { ref, set, get, update, onValue, off, remove } from "firebase/database";
 import { GameRoom, Player, BingoCard } from "@/types/game";
 // Helper function to generate a bingo card
-const generateBingoCard = (): BingoCard => ({
-  B: Array.from({ length: 5 }, () => Math.floor(Math.random() * 15) + 1),
-  I: Array.from({ length: 5 }, () => Math.floor(Math.random() * 15) + 16),
-  N: Array.from({ length: 5 }, () => Math.floor(Math.random() * 15) + 31),
-  G: Array.from({ length: 5 }, () => Math.floor(Math.random() * 15) + 46),
-  O: Array.from({ length: 5 }, () => Math.floor(Math.random() * 15) + 61),
-});
+const generateBingoCard = (): BingoCard => {
+  const usedNumbers = new Set<number>();
+
+  const generateUniqueNumbers = (
+    min: number,
+    max: number,
+    count: number,
+  ): number[] => {
+    const numbers: number[] = [];
+    while (numbers.length < count) {
+      const num = Math.floor(Math.random() * (max - min + 1)) + min;
+      if (!usedNumbers.has(num)) {
+        numbers.push(num);
+        usedNumbers.add(num);
+      }
+    }
+    return numbers;
+  };
+
+  return {
+    B: generateUniqueNumbers(1, 15, 5),
+    I: generateUniqueNumbers(16, 30, 5),
+    N: generateUniqueNumbers(31, 45, 5),
+    G: generateUniqueNumbers(46, 60, 5),
+    O: generateUniqueNumbers(61, 75, 5),
+  };
+};
 
 export const gameRoomService = {
   createRoom: async (creatorId: string, creatorName: string) => {
@@ -127,36 +147,27 @@ export const gameRoomService = {
       }
 
       const room = snapshot.val() as GameRoom;
-
-      // Ensure calledNumbers exists
-      if (!room.calledNumbers) {
-        room.calledNumbers = [];
-      }
-
-      if (!room.calledNumbers.includes(number)) {
-        throw new Error("This number has not been called yet.");
-      }
-
       const isCreator = room.creator.id === playerId;
-      const player = isCreator ? room.creator : room.opponent;
 
-      if (!player) {
-        throw new Error("Player not found");
+      // Get current room data
+      const currentData = isCreator ? room.creator : room.opponent;
+      if (!currentData) return;
+
+      // Create the update object with proper typing
+      const updates: Record<string, Player> = {};
+      if (isCreator) {
+        updates["creator"] = {
+          ...room.creator,
+          markedNumbers: [...(room.creator.markedNumbers || []), number],
+        };
+      } else if (room.opponent) {
+        updates["opponent"] = {
+          ...room.opponent,
+          markedNumbers: [...(room.opponent.markedNumbers || []), number],
+        };
       }
 
-      // Ensure markedNumbers exists
-      if (!player.markedNumbers) {
-        player.markedNumbers = [];
-      }
-
-      // Update the marked numbers
-      const path = isCreator
-        ? "creator.markedNumbers"
-        : "opponent.markedNumbers";
-      await update(roomRef, {
-        [path]: [...player.markedNumbers, number],
-        lastUpdated: Date.now(),
-      });
+      await update(roomRef, updates);
     } catch (error) {
       console.error("Error marking number:", error);
       throw error;
@@ -261,7 +272,19 @@ export const gameRoomService = {
       throw error;
     }
   },
-
+  updateGameState: async (roomId: string, updates: Partial<GameRoom>) => {
+    try {
+      const roomRef = ref(database, `rooms/${roomId}`);
+      await update(roomRef, {
+        ...updates,
+        lastUpdated: Date.now(),
+      });
+      return true;
+    } catch (error) {
+      console.error("Error updating game state:", error);
+      throw error;
+    }
+  },
   subscribeToRoom: (roomId: string, callback: (room: GameRoom) => void) => {
     const roomRef = ref(database, `rooms/${roomId}`);
 
